@@ -1,0 +1,23 @@
+openapi: 3.0.0
+info:
+  title: Unicode & Emoji Route API
+  version: 1.0.0
+paths:
+  /api/v1/users/{userId}/🚀/notifications:
+    get:
+      summary: Rocket notifications
+      responses:
+        '200':
+          description: OK
+  /api/v1/café/menu:
+    get:
+      summary: Café menu
+      responses:
+        '200':
+          description: OK
+  /api/v1/数据/指标:
+    get:
+      summary: Multilingual metrics
+      responses:
+        '200':
+          description: OK

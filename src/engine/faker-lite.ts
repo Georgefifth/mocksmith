@@ -178,30 +178,64 @@ function inferTypeFromName(name: string): string {
 /**
  * Generate a full mock entity from an OpenAPI Schema Object
  */
-export function generateEntityFromSchema(schema: Record<string, any>, defaultId?: string | number): Record<string, any> {
+export function generateEntityFromSchema(
+  schema: Record<string, any>,
+  defaultId?: string | number,
+  allSchemas: Record<string, any> = {},
+  depth = 0
+): Record<string, any> {
   const result: Record<string, any> = {};
 
   if (!schema || typeof schema !== 'object') {
     return { id: defaultId || generateUUID(), name: 'Sample Item' };
   }
 
-  const properties = schema.properties || {};
+  // Guard against deep circular schema references
+  if (depth > 8) {
+    return { id: defaultId || generateUUID(), name: schema.title || 'Referenced Entity' };
+  }
+
+  // Dereference if root schema has $ref
+  let targetSchema = schema;
+  if (targetSchema.$ref && typeof targetSchema.$ref === 'string') {
+    const refKey = targetSchema.$ref.split('/').pop();
+    if (refKey && allSchemas[refKey]) {
+      targetSchema = allSchemas[refKey];
+    }
+  }
+
+  const properties = targetSchema.properties || {};
   const propNames = Object.keys(properties);
 
   if (propNames.length === 0) {
     return {
       id: defaultId || generateUUID(),
-      name: schema.title || 'Sample Entity',
+      name: targetSchema.title || 'Sample Entity',
       createdAt: new Date().toISOString()
     };
   }
 
   for (const [key, propSchema] of Object.entries(properties)) {
     const s = propSchema as Record<string, any>;
+    if (s.$ref && typeof s.$ref === 'string') {
+      const refKey = s.$ref.split('/').pop();
+      if (refKey && allSchemas[refKey]) {
+        result[key] = generateEntityFromSchema(allSchemas[refKey], undefined, allSchemas, depth + 1);
+        continue;
+      }
+    }
+
     if (s.type === 'object' && s.properties) {
-      result[key] = generateEntityFromSchema(s);
+      result[key] = generateEntityFromSchema(s, undefined, allSchemas, depth + 1);
     } else if (s.type === 'array') {
       const itemsSchema = s.items || {};
+      if (itemsSchema.$ref && typeof itemsSchema.$ref === 'string') {
+        const refKey = itemsSchema.$ref.split('/').pop();
+        if (refKey && allSchemas[refKey]) {
+          result[key] = [generateEntityFromSchema(allSchemas[refKey], undefined, allSchemas, depth + 1)];
+          continue;
+        }
+      }
       result[key] = [generateValueForProperty(key, itemsSchema)];
     } else {
       result[key] = generateValueForProperty(key, s);

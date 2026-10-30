@@ -40,6 +40,13 @@ export class SchemaParser {
       return this.parseOpenAPI(doc, store);
     }
 
+    if (Array.isArray(doc)) {
+      const resource =
+        path.basename(filePath, path.extname(filePath)).toLowerCase().replace(/[^a-z0-9_-]/g, '') ||
+        'items';
+      return this.parseRawJson({ [resource]: doc }, store);
+    }
+
     return this.parseRawJson(doc, store);
   }
 
@@ -201,7 +208,7 @@ export class SchemaParser {
       const count = 5;
       const records: Record<string, any>[] = [];
       for (let i = 1; i <= count; i++) {
-        records.push(generateEntityFromSchema(schemaObj, i));
+        records.push(generateEntityFromSchema(schemaObj, i, schemas));
       }
 
       initialData[res] = records;
@@ -228,11 +235,16 @@ export class SchemaParser {
   /**
    * Parse plain JSON mock file (e.g. db.json)
    */
-  public static parseRawJson(doc: Record<string, any>, store: RelationalStore): ParseResult {
+  public static parseRawJson(
+    doc: Record<string, any> | any[],
+    store: RelationalStore,
+    defaultResource = 'items'
+  ): ParseResult {
     const routes: RouteDefinition[] = [];
     const initialData: Record<string, Record<string, any>[]> = {};
+    const dict: Record<string, any> = Array.isArray(doc) ? { [defaultResource]: doc } : doc;
 
-    for (const [resource, value] of Object.entries(doc)) {
+    for (const [resource, value] of Object.entries(dict)) {
       if (Array.isArray(value)) {
         initialData[resource] = value;
         store.seed(resource, value);
@@ -301,24 +313,41 @@ export class SchemaParser {
     schemas: Record<string, any>,
     resourceName: string
   ): Record<string, any> | undefined {
+    let schema: any;
+
     // Check requestBody
     const reqSchema = opObj?.requestBody?.content?.['application/json']?.schema;
-    if (reqSchema) return reqSchema;
+    if (reqSchema) schema = reqSchema;
 
     // Check responses 200 or 201
-    const resSchema =
-      opObj?.responses?.['200']?.content?.['application/json']?.schema ||
-      opObj?.responses?.['201']?.content?.['application/json']?.schema;
-    if (resSchema) {
-      if (resSchema.type === 'array' && resSchema.items) {
-        return resSchema.items;
+    if (!schema) {
+      const resSchema =
+        opObj?.responses?.['200']?.content?.['application/json']?.schema ||
+        opObj?.responses?.['201']?.content?.['application/json']?.schema;
+      if (resSchema) {
+        if (resSchema.type === 'array' && resSchema.items) {
+          schema = resSchema.items;
+        } else {
+          schema = resSchema;
+        }
       }
-      return resSchema;
     }
 
     // Fallback to name heuristic
-    const singular = resourceName.replace(/s$/, '').toLowerCase();
-    const key = Object.keys(schemas).find((k) => k.toLowerCase() === singular);
-    return key ? schemas[key] : undefined;
+    if (!schema) {
+      const singular = resourceName.replace(/s$/, '').toLowerCase();
+      const key = Object.keys(schemas).find((k) => k.toLowerCase() === singular);
+      schema = key ? schemas[key] : undefined;
+    }
+
+    // Resolve top-level $ref if present
+    if (schema?.$ref && typeof schema.$ref === 'string') {
+      const refKey = schema.$ref.split('/').pop();
+      if (refKey && schemas[refKey]) {
+        return schemas[refKey];
+      }
+    }
+
+    return schema;
   }
 }

@@ -1,0 +1,11 @@
+openapi: 3.0.0
+info:
+  title: Corrupted
+  version: [unclosed array
+paths:
+  /broken:
+    get:
+      tags:
+        - broken
+    - invalid indentation
+      summary: Broken

@@ -1,0 +1,150 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Deep Nesting API",
+    "version": "1.0.0"
+  },
+  "paths": {
+    "/api/deep": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "level_1": {
+                      "type": "object",
+                      "properties": {
+                        "level_2": {
+                          "type": "object",
+                          "properties": {
+                            "level_3": {
+                              "type": "object",
+                              "properties": {
+                                "level_4": {
+                                  "type": "object",
+                                  "properties": {
+                                    "level_5": {
+                                      "type": "object",
+                                      "properties": {
+                                        "level_6": {
+                                          "type": "object",
+                                          "properties": {
+                                            "level_7": {
+                                              "type": "object",
+                                              "properties": {
+                                                "level_8": {
+                                                  "type": "object",
+                                                  "properties": {
+                                                    "level_9": {
+                                                      "type": "object",
+                                                      "properties": {
+                                                        "level_10": {
+                                                          "type": "object",
+                                                          "properties": {
+                                                            "level_11": {
+                                                              "type": "object",
+                                                              "properties": {
+                                                                "level_12": {
+                                                                  "type": "object",
+                                                                  "properties": {
+                                                                    "level_13": {
+                                                                      "type": "object",
+                                                                      "properties": {
+                                                                        "level_14": {
+                                                                          "type": "object",
+                                                                          "properties": {
+                                                                            "level_15": {
+                                                                              "type": "object",
+                                                                              "properties": {
+                                                                                "level_16": {
+                                                                                  "type": "object",
+                                                                                  "properties": {
+                                                                                    "level_17": {
+                                                                                      "type": "object",
+                                                                                      "properties": {
+                                                                                        "level_18": {
+                                                                                          "type": "object",
+                                                                                          "properties": {
+                                                                                            "level_19": {
+                                                                                              "type": "object",
+                                                                                              "properties": {
+                                                                                                "level_20": {
+                                                                                                  "type": "object",
+                                                                                                  "properties": {
+                                                                                                    "level_21": {
+                                                                                                      "type": "object",
+                                                                                                      "properties": {
+                                                                                                        "level_22": {
+                                                                                                          "type": "object",
+                                                                                                          "properties": {
+                                                                                                            "level_23": {
+                                                                                                              "type": "object",
+                                                                                                              "properties": {
+                                                                                                                "level_24": {
+                                                                                                                  "type": "object",
+                                                                                                                  "properties": {
+                                                                                                                    "level_25": {
+                                                                                                                      "type": "string",
+                                                                                                                      "description": "leaf value"
+                                                                                                                    }
+                                                                                                                  }
+                                                                                                                }
+                                                                                                              }
+                                                                                                            }
+                                                                                                          }
+                                                                                                        }
+                                                                                                      }
+                                                                                                    }
+                                                                                                  }
+                                                                                                }
+                                                                                              }
+                                                                                            }
+                                                                                          }
+                                                                                        }
+                                                                                      }
+                                                                                    }
+                                                                                  }
+                                                                                }
+                                                                              }
+                                                                            }
+                                                                          }
+                                                                        }
+                                                                      }
+                                                                    }
+                                                                  }
+                                                                }
+                                                              }
+                                                            }
+                                                          }
+                                                        }
+                                                      }
+                                                    }
+                                                  }
+                                                }
+                                              }
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
