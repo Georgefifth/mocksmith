@@ -103,4 +103,30 @@ describe('MockSmithServer HTTP End-to-End', () => {
     const bruno = await brunoRes.json();
     expect(bruno.name).toBe('MockSmith Collection');
   });
+
+  it('should register, list, and delete webhooks via dashboard API', async () => {
+    // 1. Register webhook
+    const regRes = await fetch(`${baseUrl}/_mocksmith/api/webhooks`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        event: 'users.created',
+        targetUrl: 'http://localhost:9999/webhook',
+        secret: 'test-secret'
+      })
+    });
+    expect(regRes.status).toBe(201);
+    const sub = await regRes.json();
+    expect(sub.id).toBeDefined();
+
+    // 2. List webhooks
+    const listRes = await fetch(`${baseUrl}/_mocksmith/api/webhooks`);
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    expect(list.length).toBeGreaterThanOrEqual(1);
+
+    // 3. Delete webhook
+    const delRes = await fetch(`${baseUrl}/_mocksmith/api/webhooks/${sub.id}`, { method: 'DELETE' });
+    expect(delRes.status).toBe(200);
+  });
 });

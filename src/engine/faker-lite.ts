@@ -1,6 +1,7 @@
 /**
  * FakerLite: Zero-dependency smart mock data generator
  * Uses semantic field heuristics and types to synthesize realistic mock payloads.
+ * Includes deterministic Mulberry32 PRNG for reproducible test seeding.
  */
 
 const FIRST_NAMES = ['Alex', 'Jordan', 'Taylor', 'Morgan', 'Casey', 'Sam', 'Riley', 'Jamie', 'Cameron', 'Dakota'];
@@ -12,18 +13,44 @@ const COUNTRIES = ['United States', 'United Kingdom', 'Germany', 'Japan', 'Canad
 const STATUSES = ['active', 'pending', 'inactive', 'archived', 'completed'];
 const CATEGORIES = ['Electronics', 'Home & Kitchen', 'Books', 'Software', 'Apparel', 'Productivity'];
 
+// Mulberry32 deterministic PRNG state
+let currentSeed: number | null = null;
+let rngState: number = 0;
+
+export function setRandomSeed(seed: number | null): void {
+  currentSeed = seed;
+  if (seed !== null) {
+    rngState = seed >>> 0;
+  }
+}
+
+export function getRandomSeed(): number | null {
+  return currentSeed;
+}
+
+function random(): number {
+  if (currentSeed === null) {
+    return Math.random();
+  }
+  // Mulberry32 32-bit PRNG
+  let t = (rngState += 0x6d2b79f5);
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
 function pick<T>(arr: T[]): T {
-  return arr[Math.floor(Math.random() * arr.length)];
+  return arr[Math.floor(random() * arr.length)];
 }
 
 function randomInt(min: number, max: number): number {
-  return Math.floor(Math.random() * (max - min + 1)) + min;
+  return Math.floor(random() * (max - min + 1)) + min;
 }
 
 export function generateUUID(): string {
-  // Simple RFC4122 v4 UUID generator without native deps
+  // Deterministic or Math.random RFC4122 v4 UUID generator
   return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
-    const r = (Math.random() * 16) | 0;
+    const r = (random() * 16) | 0;
     const v = c === 'x' ? r : (r & 0x3) | 0x8;
     return v.toString(16);
   });
@@ -41,7 +68,9 @@ export function generateValueForProperty(propName: string, schema?: Record<strin
   // 2. Format checks
   if (schema?.format === 'date-time' || lowerName.includes('at') || lowerName.endsWith('_date') || lowerName === 'date') {
     const pastDays = randomInt(1, 90);
-    return new Date(Date.now() - pastDays * 24 * 3600 * 1000).toISOString();
+    // Use fixed reference timestamp if seeded, else Date.now()
+    const baseTime = currentSeed !== null ? 1700000000000 : Date.now();
+    return new Date(baseTime - pastDays * 24 * 3600 * 1000).toISOString();
   }
 
   if (schema?.format === 'uuid' || lowerName === 'uuid' || lowerName === 'guid') {
@@ -92,7 +121,7 @@ export function generateValueForProperty(propName: string, schema?: Record<strin
   }
 
   if (lowerName.includes('price') || lowerName.includes('cost') || lowerName.includes('amount') || lowerName === 'salary') {
-    return Number((Math.random() * 500 + 10).toFixed(2));
+    return Number((random() * 500 + 10).toFixed(2));
   }
 
   if (lowerName.includes('status') || lowerName === 'state') {
@@ -120,7 +149,7 @@ export function generateValueForProperty(propName: string, schema?: Record<strin
   }
 
   if (lowerName.startsWith('is_') || lowerName.startsWith('has_') || lowerName.startsWith('can_') || type === 'boolean') {
-    return Math.random() > 0.5;
+    return random() > 0.5;
   }
 
   // 4. Default type-based fallbacks

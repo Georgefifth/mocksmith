@@ -165,6 +165,7 @@ export function renderDashboardHtml(): string {
     <button class="tab-btn active" onclick="switchTab('traffic')">Live Traffic & Console (<span id="req-count">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('database')">Relational State Tables</button>
     <button class="tab-btn" onclick="switchTab('chaos')">Chaos & Fault Sandbox</button>
+    <button class="tab-btn" onclick="switchTab('webhooks')">Webhooks & Outbound Events (<span id="wh-count">0</span>)</button>
   </div>
 
   <main>
@@ -312,6 +313,64 @@ export function renderDashboardHtml(): string {
         </div>
       </div>
     </div>
+
+    <!-- Tab 4: Webhooks & Outbound Events -->
+    <div id="tab-webhooks" class="tab-content">
+      <div class="panel" style="margin-bottom: 1.5rem;">
+        <div class="panel-title">
+          <span>Registered Webhook Subscriptions</span>
+          <button class="btn btn-sm" onclick="promptCreateWebhook()">+ Register Webhook</button>
+        </div>
+        <div class="traffic-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th>Event Pattern</th>
+                <th>Target Endpoint URL</th>
+                <th style="width: 100px;">Delay</th>
+                <th style="width: 90px;">Active</th>
+                <th style="width: 160px;">Actions</th>
+              </tr>
+            </thead>
+            <tbody id="webhooks-tbody">
+              <tr id="empty-wh-row">
+                <td colspan="5" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">
+                  No webhooks registered. Click "+ Register Webhook" to listen to CRUD events!
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-title">
+          <span>Outbound Webhook Delivery Logs</span>
+          <button class="btn btn-secondary btn-sm" onclick="fetchWebhookDeliveries()">Refresh Deliveries</button>
+        </div>
+        <div class="traffic-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 90px;">Time</th>
+                <th style="width: 120px;">Event</th>
+                <th>Target URL</th>
+                <th style="width: 90px;">Status</th>
+                <th style="width: 90px;">Duration</th>
+                <th style="width: 100px;">Inspect</th>
+              </tr>
+            </thead>
+            <tbody id="wh-deliveries-tbody">
+              <tr id="empty-deliveries-row">
+                <td colspan="6" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">
+                  No webhooks delivered yet. Triggers fire automatically on POST / PUT / DELETE.
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -334,6 +393,9 @@ export function renderDashboardHtml(): string {
 
       if (tabName === 'database') {
         fetchDatabaseState();
+      } else if (tabName === 'webhooks') {
+        fetchWebhooks();
+        fetchWebhookDeliveries();
       }
     }
 
@@ -632,6 +694,107 @@ export function renderDashboardHtml(): string {
       const status = document.getElementById('save-status');
       status.style.display = 'inline';
       setTimeout(() => status.style.display = 'none', 2000);
+    }
+
+    // Webhooks Management
+    async function fetchWebhooks() {
+      try {
+        const res = await fetch('/_mocksmith/api/webhooks');
+        const list = await res.json();
+        document.getElementById('wh-count').textContent = list.length;
+        renderWebhooks(list);
+      } catch (err) {
+        console.error('Failed to fetch webhooks:', err);
+      }
+    }
+
+    function renderWebhooks(list) {
+      const tbody = document.getElementById('webhooks-tbody');
+      tbody.innerHTML = '';
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">No webhooks registered. Click "+ Register Webhook" to listen to CRUD events!</td></tr>';
+        return;
+      }
+
+      list.forEach(w => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = \`
+          <td><span class="chaos-tag" style="color: var(--primary); border-color: var(--primary);">\${w.event}</span></td>
+          <td style="font-family: monospace; font-size: 0.8rem;">\${w.targetUrl}</td>
+          <td>\${w.delayMs}ms</td>
+          <td><span style="color: \${w.active ? 'var(--success)' : 'var(--text-muted)'}; font-weight: 600;">\${w.active ? 'Active' : 'Disabled'}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick='triggerWebhook(\${JSON.stringify(w.id)})'>Trigger</button>
+            <button class="btn btn-danger btn-sm" onclick='deleteWebhook(\${JSON.stringify(w.id)})'>Del</button>
+          </td>
+        \`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    async function promptCreateWebhook() {
+      const targetUrl = prompt('Enter Webhook Target URL (e.g. http://localhost:3000/api/webhook):', 'http://localhost:3000/api/webhook');
+      if (!targetUrl) return;
+
+      const event = prompt('Enter Event Pattern (e.g. orders.created, users.*, *):', 'users.created') || '*';
+      const secret = prompt('Enter Signing Secret:', 'mocksmith-webhook-secret') || 'mocksmith-webhook-secret';
+
+      await fetch('/_mocksmith/api/webhooks', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ targetUrl, event, secret, delayMs: 0, active: true })
+      });
+
+      await fetchWebhooks();
+    }
+
+    async function deleteWebhook(id) {
+      if (!confirm('Are you sure you want to remove this webhook?')) return;
+      await fetch('/_mocksmith/api/webhooks/' + id, { method: 'DELETE' });
+      await fetchWebhooks();
+    }
+
+    async function triggerWebhook(id) {
+      const res = await fetch('/_mocksmith/api/webhooks/' + id + '/trigger', { method: 'POST' });
+      const del = await res.json();
+      alert('Webhook dispatched! Response status: ' + del.status + ' (' + del.durationMs + 'ms)');
+      await fetchWebhookDeliveries();
+    }
+
+    async function fetchWebhookDeliveries() {
+      try {
+        const res = await fetch('/_mocksmith/api/webhooks/deliveries');
+        const list = await res.json();
+        renderWebhookDeliveries(list);
+      } catch (err) {
+        console.error('Failed to fetch deliveries:', err);
+      }
+    }
+
+    function renderWebhookDeliveries(list) {
+      const tbody = document.getElementById('wh-deliveries-tbody');
+      tbody.innerHTML = '';
+      if (!list || list.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6" style="text-align:center; padding: 1.5rem; color: var(--text-muted);">No webhooks delivered yet. Triggers fire automatically on POST / PUT / DELETE.</td></tr>';
+        return;
+      }
+
+      list.forEach(d => {
+        const tr = document.createElement('tr');
+        const timeStr = new Date(d.timestamp).toLocaleTimeString();
+        const statusClass = d.status === 200 ? 'status-2xx' : (d.status === 0 ? 'status-5xx' : 'status-4xx');
+        tr.innerHTML = \`
+          <td style="color: var(--text-muted);">\${timeStr}</td>
+          <td><span class="chaos-tag">\${d.event}</span></td>
+          <td style="font-family: monospace; font-size: 0.8rem;">\${d.targetUrl}</td>
+          <td><span class="status-badge \${statusClass}">\${d.status === 0 ? 'ERR' : d.status}</span></td>
+          <td>\${d.durationMs}ms</td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick='alert("Payload: " + JSON.stringify(d.payload, null, 2) + "\\n\\nSignature: " + d.signature)'>Payload</button>
+          </td>
+        \`;
+        tbody.appendChild(tr);
+      });
     }
 
     // Startup

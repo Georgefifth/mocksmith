@@ -3,6 +3,7 @@ import { renderDashboardHtml } from './dashboard/html.js';
 import { generateUUID } from './engine/faker-lite.js';
 import { validatePayload } from './engine/validator.js';
 import { CollectionExporter } from './engine/exporter.js';
+import { WebhookEngine } from './engine/webhook.js';
 import type { RelationalStore } from './engine/store.js';
 import type { ChaosEngine } from './engine/chaos.js';
 import type { RouteDefinition, RequestLogEntry } from './types.js';
@@ -17,14 +18,17 @@ export class MockSmithServer {
   private server: http.Server | null = null;
   private sseClients: Set<http.ServerResponse> = new Set();
   private initialSeedData: Record<string, Record<string, any>[]> = {};
+  public webhookEngine: WebhookEngine;
 
   constructor(
     private store: RelationalStore,
     private chaos: ChaosEngine,
     private routes: RouteDefinition[],
-    private options: ServerOptions = { port: 4000 }
+    private options: ServerOptions = { port: 4000 },
+    webhookEngine?: WebhookEngine
   ) {
     this.initialSeedData = store.exportSnapshot();
+    this.webhookEngine = webhookEngine || new WebhookEngine();
   }
 
   public setInitialSeed(data: Record<string, Record<string, any>[]>): void {
@@ -194,10 +198,12 @@ export class MockSmithServer {
               } else {
                 statusCode = 201;
                 responseBody = this.store.create(route.resource, body || {});
+                this.webhookEngine.dispatch(`${route.resource}.created`, responseBody);
               }
             } else {
               statusCode = 201;
               responseBody = this.store.create(route.resource, body || {});
+              this.webhookEngine.dispatch(`${route.resource}.created`, responseBody);
             }
           }
         }
@@ -229,6 +235,7 @@ export class MockSmithServer {
                   responseBody = { error: 'Not Found', message: `${route.resource} with ID '${id}' not found` };
                 } else {
                   responseBody = updated;
+                  this.webhookEngine.dispatch(`${route.resource}.updated`, responseBody);
                 }
               }
             } else {
@@ -238,6 +245,7 @@ export class MockSmithServer {
                 responseBody = { error: 'Not Found', message: `${route.resource} with ID '${id}' not found` };
               } else {
                 responseBody = updated;
+                this.webhookEngine.dispatch(`${route.resource}.updated`, responseBody);
               }
             }
           } else if (method === 'PATCH') {
@@ -247,6 +255,7 @@ export class MockSmithServer {
               responseBody = { error: 'Not Found', message: `${route.resource} with ID '${id}' not found` };
             } else {
               responseBody = patched;
+              this.webhookEngine.dispatch(`${route.resource}.updated`, responseBody);
             }
           } else if (method === 'DELETE') {
             const deleted = this.store.delete(route.resource, id);
@@ -256,6 +265,7 @@ export class MockSmithServer {
             } else {
               statusCode = 200;
               responseBody = { success: true, message: `Deleted ${route.resource} '${id}'` };
+              this.webhookEngine.dispatch(`${route.resource}.deleted`, { id, resource: route.resource });
             }
           }
         }
@@ -365,6 +375,59 @@ export class MockSmithServer {
         'Content-Disposition': 'attachment; filename="mocksmith-bruno.json"'
       });
       res.end(JSON.stringify(brunoCol, null, 2));
+      return;
+    }
+
+    // Webhook Management Endpoints
+    if (pathname === '/_mocksmith/api/webhooks' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(this.webhookEngine.list(), null, 2));
+      return;
+    }
+
+    if (pathname === '/_mocksmith/api/webhooks' && method === 'POST') {
+      this.readRequestBody(req).then((body) => {
+        const sub = this.webhookEngine.register({
+          event: body.event || '*',
+          targetUrl: body.targetUrl,
+          secret: body.secret || 'mocksmith-webhook-secret',
+          delayMs: Number(body.delayMs) || 0,
+          active: body.active !== false
+        });
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(sub, null, 2));
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/_mocksmith/api/webhooks/') && method === 'DELETE') {
+      const id = pathname.replace('/_mocksmith/api/webhooks/', '');
+      const removed = this.webhookEngine.remove(id);
+      res.writeHead(removed ? 200 : 404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: removed }));
+      return;
+    }
+
+    if (pathname.startsWith('/_mocksmith/api/webhooks/') && pathname.endsWith('/trigger') && method === 'POST') {
+      const id = pathname.replace('/_mocksmith/api/webhooks/', '').replace('/trigger', '');
+      const sub = this.webhookEngine.list().find((s) => s.id === id);
+      if (!sub) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: 'Webhook not found' }));
+        return;
+      }
+      this.readRequestBody(req).then(async (body) => {
+        const testPayload = body?.data || { message: 'Manual MockSmith Webhook Trigger', test: true };
+        const delivery = await this.webhookEngine.deliver(sub, sub.event, testPayload);
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify(delivery, null, 2));
+      });
+      return;
+    }
+
+    if (pathname === '/_mocksmith/api/webhooks/deliveries' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(this.webhookEngine.getDeliveries(), null, 2));
       return;
     }
 

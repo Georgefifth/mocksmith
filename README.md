@@ -3,10 +3,10 @@
 > **Zero-configuration stateful mock API server and network chaos sandbox.**  
 > Turn static OpenAPI 3.0/3.1 specs or sample JSON into a live, relational REST backend with embedded real-time browser inspection and chaos simulation.
 
-[![Tests](https://img.shields.io/badge/tests-26%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/tests-30%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Local-First](https://img.shields.io/badge/architecture-local--first-purple.svg)]()
-[![Version](https://img.shields.io/badge/version-1.1.0-orange.svg)]()
+[![Version](https://img.shields.io/badge/version-1.2.0-orange.svg)]()
 
 ---
 

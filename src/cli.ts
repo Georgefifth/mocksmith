@@ -4,6 +4,7 @@ import pc from 'picocolors';
 import { RelationalStore } from './engine/store.js';
 import { ChaosEngine } from './engine/chaos.js';
 import { SchemaParser } from './engine/schema-parser.js';
+import { setRandomSeed } from './engine/faker-lite.js';
 import { MockSmithServer } from './server.js';
 
 export function runCLI(args: string[] = process.argv): void {
@@ -21,9 +22,15 @@ export function runCLI(args: string[] = process.argv): void {
     .option('-s, --status-code <number>', 'Chaos HTTP status code to inject (500, 503, 429)', '500')
     .option('--auth', 'Enable Bearer authorization simulation', false)
     .option('--persist <path>', 'Persist state mutations to a local JSON file')
+    .option('--seed <number>', 'Deterministic PRNG seed for reproducible mock data')
     .option('--demo', 'Start instant interactive demo store with Users, Products, and Orders', false)
     .action(async (specPath, options) => {
       printBanner();
+
+      if (options.seed !== undefined) {
+        setRandomSeed(Number(options.seed));
+        console.log(pc.cyan(`🎲 Deterministic PRNG Seed set to: ${pc.bold(options.seed)}`));
+      }
 
       const port = Number(options.port) || 4000;
       const latencyMs = Number(options.latency) || 0;
