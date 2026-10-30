@@ -6,6 +6,7 @@ import { ChaosEngine } from './engine/chaos.js';
 import { SchemaParser } from './engine/schema-parser.js';
 import { setRandomSeed } from './engine/faker-lite.js';
 import { TrafficRecorder } from './engine/recorder.js';
+import { loadTemplate } from './engine/templates.js';
 import { MockSmithServer } from './server.js';
 
 export function runCLI(args: string[] = process.argv): void {
@@ -26,6 +27,7 @@ export function runCLI(args: string[] = process.argv): void {
     .option('--seed <number>', 'Deterministic PRNG seed for reproducible mock data')
     .option('--proxy <url>', 'Proxy unmocked routes to an upstream real backend URL')
     .option('--record [path]', 'Record live HTTP traffic and auto-synthesize OpenAPI 3.0 specification')
+    .option('-t, --template <name>', 'Start server with a pre-configured template (ecommerce, petstore, social, chaos)')
     .option('--demo', 'Start instant interactive demo store with Users, Products, and Orders', false)
     .action(async (specPath, options) => {
       printBanner();
@@ -58,7 +60,10 @@ export function runCLI(args: string[] = process.argv): void {
 
       let parseResult: import('./engine/schema-parser.js').ParseResult;
       try {
-        if (isDemo && !specPath) {
+        if (options.template) {
+          console.log(pc.cyan(`ℹ Loading template preset: ${pc.bold(options.template)}...\n`));
+          parseResult = loadTemplate(options.template, store);
+        } else if (isDemo && !specPath) {
           console.log(pc.cyan('ℹ No specification provided. Initializing MockSmith interactive DEMO API...\n'));
           parseResult = SchemaParser.generateDemo(store);
         } else {

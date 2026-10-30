@@ -6,6 +6,7 @@ import { CollectionExporter } from './engine/exporter.js';
 import { WebhookEngine } from './engine/webhook.js';
 import { TrafficRecorder } from './engine/recorder.js';
 import { SnapshotManager } from './engine/snapshots.js';
+import { getAvailableTemplates, loadTemplate } from './engine/templates.js';
 import type { RelationalStore } from './engine/store.js';
 import type { ChaosEngine } from './engine/chaos.js';
 import type { RouteDefinition, RequestLogEntry } from './types.js';
@@ -487,6 +488,23 @@ export class MockSmithServer {
       const removed = this.snapshots.delete(name);
       res.writeHead(removed ? 200 : 400, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ success: removed }));
+      return;
+    }
+
+    // Template Endpoints
+    if (pathname === '/_mocksmith/api/templates' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(getAvailableTemplates(), null, 2));
+      return;
+    }
+
+    if (pathname.startsWith('/_mocksmith/api/templates/') && pathname.endsWith('/load') && method === 'POST') {
+      const templateId = pathname.replace('/_mocksmith/api/templates/', '').replace('/load', '');
+      const result = loadTemplate(templateId, this.store);
+      this.routes = result.routes;
+      this.setInitialSeed(result.initialData);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, template: templateId, routesCount: result.routes.length }));
       return;
     }
 

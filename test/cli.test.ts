@@ -72,4 +72,34 @@ describe('CLI Process Execution', () => {
       proc.kill('SIGTERM');
     }
   });
+
+  it('should start with --template ecommerce and seed relational products & orders', async () => {
+    const cliPath = path.resolve('bin/mocksmith.js');
+    const port = 4923;
+
+    const proc = spawn('node', [cliPath, '--template', 'ecommerce', '-p', String(port)], {
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+
+    try {
+      await new Promise<void>((resolve, reject) => {
+        let output = '';
+        proc.stdout.on('data', (data) => {
+          output += data.toString();
+          if (output.includes(`http://localhost:${port}`)) {
+            resolve();
+          }
+        });
+        setTimeout(() => reject(new Error('Timeout starting template CLI')), 4000);
+      });
+
+      const res = await fetch(`http://localhost:${port}/api/v1/products`);
+      expect(res.status).toBe(200);
+      const prods = await res.json();
+      expect(Array.isArray(prods)).toBe(true);
+      expect(prods.length).toBe(5);
+    } finally {
+      proc.kill('SIGTERM');
+    }
+  });
 });

@@ -66,4 +66,28 @@ describe('Schema Validator', () => {
     expect(res.valid).toBe(false);
     expect(res.errors.some((e) => e.field === 'status')).toBe(true);
   });
+
+  it('should validate polymorphic oneOf schemas', () => {
+    const polymorphicSchema = {
+      oneOf: [
+        {
+          type: 'object',
+          required: ['type', 'cardNumber'],
+          properties: { type: { type: 'string' }, cardNumber: { type: 'string' } }
+        },
+        {
+          type: 'object',
+          required: ['type', 'iban'],
+          properties: { type: { type: 'string' }, iban: { type: 'string' } }
+        }
+      ]
+    };
+
+    // Valid card
+    expect(validatePayload({ type: 'card', cardNumber: '4111-2222' }, polymorphicSchema).valid).toBe(true);
+    // Valid bank
+    expect(validatePayload({ type: 'bank', iban: 'DE89370400440532013000' }, polymorphicSchema).valid).toBe(true);
+    // Invalid (matches neither)
+    expect(validatePayload({ type: 'crypto', wallet: '0x123' }, polymorphicSchema).valid).toBe(false);
+  });
 });

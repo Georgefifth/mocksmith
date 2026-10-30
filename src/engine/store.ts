@@ -3,6 +3,46 @@ import path from 'node:path';
 import { generateUUID } from './faker-lite.js';
 import type { QueryFilter, PaginatedResult, StoreOptions } from '../types.js';
 
+function compareFilterValue(
+  itemVal: any,
+  targetVal: any,
+  operator: 'gte' | 'lte' | 'gt' | 'lt' | 'ne' | 'like' | 'eq'
+): boolean {
+  if (itemVal === undefined || itemVal === null) return operator === 'ne';
+
+  if (operator === 'like') {
+    return String(itemVal).toLowerCase().includes(String(targetVal).toLowerCase());
+  }
+
+  if (operator === 'ne') {
+    return String(itemVal).toLowerCase() !== String(targetVal).toLowerCase();
+  }
+
+  if (operator === 'eq') {
+    return String(itemVal).toLowerCase() === String(targetVal).toLowerCase();
+  }
+
+  // Numeric comparison if both parse cleanly
+  const numA = Number(itemVal);
+  const numB = Number(targetVal);
+  if (!Number.isNaN(numA) && !Number.isNaN(numB) && typeof itemVal !== 'boolean') {
+    if (operator === 'gte') return numA >= numB;
+    if (operator === 'lte') return numA <= numB;
+    if (operator === 'gt') return numA > numB;
+    if (operator === 'lt') return numA < numB;
+  }
+
+  // Fallback to ISO date or string ordering
+  const strA = String(itemVal);
+  const strB = String(targetVal);
+  if (operator === 'gte') return strA >= strB;
+  if (operator === 'lte') return strA <= strB;
+  if (operator === 'gt') return strA > strB;
+  if (operator === 'lt') return strA < strB;
+
+  return true;
+}
+
 export class RelationalStore {
   private tables: Map<string, Map<string | number, Record<string, any>>> = new Map();
   private options: StoreOptions;
@@ -51,16 +91,35 @@ export class RelationalStore {
     const table = this.tables.get(tableName)!;
     let items = Array.from(table.values());
 
-    // 1. Exact Field Param Filtering
+    // 1. Param and Relational Operator Filtering (_gte, _lte, _gt, _lt, _ne, _like, exact)
     if (filter.params) {
-      for (const [key, value] of Object.entries(filter.params)) {
-        if (value !== undefined && value !== null && value !== '') {
-          items = items.filter((item) => {
-            const itemVal = item[key];
-            if (itemVal === undefined) return false;
-            return String(itemVal).toLowerCase() === String(value).toLowerCase();
-          });
+      for (const [rawKey, value] of Object.entries(filter.params)) {
+        if (value === undefined || value === null || value === '') continue;
+
+        let field = rawKey;
+        let op: 'gte' | 'lte' | 'gt' | 'lt' | 'ne' | 'like' | 'eq' = 'eq';
+
+        if (rawKey.endsWith('_gte')) {
+          field = rawKey.slice(0, -4);
+          op = 'gte';
+        } else if (rawKey.endsWith('_lte')) {
+          field = rawKey.slice(0, -4);
+          op = 'lte';
+        } else if (rawKey.endsWith('_gt')) {
+          field = rawKey.slice(0, -3);
+          op = 'gt';
+        } else if (rawKey.endsWith('_lt')) {
+          field = rawKey.slice(0, -3);
+          op = 'lt';
+        } else if (rawKey.endsWith('_ne')) {
+          field = rawKey.slice(0, -3);
+          op = 'ne';
+        } else if (rawKey.endsWith('_like')) {
+          field = rawKey.slice(0, -5);
+          op = 'like';
         }
+
+        items = items.filter((item) => compareFilterValue(item[field], value, op));
       }
     }
 

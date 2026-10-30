@@ -30,6 +30,42 @@ export function validatePayload(
     return { valid: false, errors };
   }
 
+  // Handle oneOf polymorphic schema validation
+  if (Array.isArray(schema.oneOf) && schema.oneOf.length > 0) {
+    const results = schema.oneOf.map((v: any) => validatePayload(payload, v));
+    const validCount = results.filter((r) => r.valid).length;
+    if (validCount !== 1) {
+      return {
+        valid: false,
+        errors: [
+          {
+            field: 'oneOf',
+            message: `Payload must match exactly one 'oneOf' schema (matched ${validCount} of ${schema.oneOf.length})`
+          }
+        ]
+      };
+    }
+    return { valid: true, errors: [] };
+  }
+
+  // Handle anyOf polymorphic schema validation
+  if (Array.isArray(schema.anyOf) && schema.anyOf.length > 0) {
+    const results = schema.anyOf.map((v: any) => validatePayload(payload, v));
+    const anyPassed = results.some((r) => r.valid);
+    if (!anyPassed) {
+      return {
+        valid: false,
+        errors: [
+          {
+            field: 'anyOf',
+            message: `Payload does not match any of the ${schema.anyOf.length} 'anyOf' schema variants`
+          }
+        ]
+      };
+    }
+    return { valid: true, errors: [] };
+  }
+
   // 1. Required fields check
   const requiredFields: string[] = Array.isArray(schema.required) ? schema.required : [];
   for (const field of requiredFields) {

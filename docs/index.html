@@ -201,6 +201,7 @@
             <span id="console-res-status" style="font-weight: 700; font-size: 0.8rem;"></span>
             <span id="console-res-time" style="font-size: 0.75rem; color: var(--text-muted);"></span>
           </div>
+          <div id="console-validation-diag" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.5rem; font-size: 0.75rem; color: #fca5a5;"></div>
           <pre id="console-res-body" style="font-size: 0.75rem; color: #38bdf8; max-height: 150px; overflow-y: auto;"></pre>
         </div>
       </div>
@@ -235,6 +236,19 @@
         <div class="panel-title">
           <span>In-Memory Relational State Inspector & Editor</span>
           <button class="btn btn-sm" onclick="openAddModal()">+ Add Record</button>
+        </div>
+        <!-- Preset Bar -->
+        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Preset:</span>
+            <select id="template-select" class="form-select" style="width: 180px; padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+              <option value="ecommerce">🛒 E-Commerce Cloud</option>
+              <option value="petstore">🐾 OAI Petstore Canonical</option>
+              <option value="social">💬 Social Network & Geo</option>
+              <option value="chaos">⚡ Chaos Sandbox</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="loadClientTemplate()">Load Preset</button>
+          </div>
         </div>
         <div class="db-tabs" id="db-resource-tabs"></div>
         <div class="traffic-table-wrapper">
@@ -426,6 +440,16 @@
       document.getElementById('console-res-status').textContent = 'HTTP ' + status;
       document.getElementById('console-res-status').className = status >= 400 ? 'status-4xx' : 'status-2xx';
       document.getElementById('console-res-time').textContent = (latency + 8) + ' ms';
+
+      const diagBox = document.getElementById('console-validation-diag');
+      if (status === 400 && resBody && resBody.errors && Array.isArray(resBody.errors)) {
+        diagBox.style.display = 'block';
+        diagBox.innerHTML = '<strong>⚠️ Contract Validation Violations:</strong><br/>' +
+          resBody.errors.map(function(e) { return '• <code>' + e.field + '</code>: ' + e.message; }).join('<br/>');
+      } else {
+        diagBox.style.display = 'none';
+      }
+
       document.getElementById('console-res-body').textContent = JSON.stringify(resBody, null, 2);
 
       traffic.unshift({
@@ -438,6 +462,56 @@
         fault: status >= 400 ? 'FAULT ' + status : (latency > 0 ? '+' + latency + 'ms' : '-')
       });
       renderTraffic();
+    }
+
+    function loadClientTemplate() {
+      const template = document.getElementById('template-select').value;
+      if (template === 'petstore') {
+        memoryDB = {
+          pets: [
+            { id: 1, name: "Doggie", tag: "dog", status: "available" },
+            { id: 2, name: "Catty", tag: "cat", status: "pending" },
+            { id: 3, name: "Birdy", tag: "bird", status: "sold" }
+          ]
+        };
+      } else if (template === 'social') {
+        memoryDB = {
+          users: [
+            { id: "u-1", name: "Ada Lovelace", email: "ada@lovelace.org", city: "London" },
+            { id: "u-2", name: "Alan Turing", email: "alan@turing.org", city: "Manchester" }
+          ],
+          posts: [
+            { id: "p-1", userId: "u-1", title: "Note G", body: "Computing algorithms for Bernoulli numbers." },
+            { id: "p-2", userId: "u-2", title: "Enigma", body: "Breaking cryptography machines." }
+          ]
+        };
+      } else if (template === 'chaos') {
+        memoryDB = {
+          endpoints: [
+            { id: 1, path: "/api/status/200", description: "Guaranteed 200 OK" },
+            { id: 2, path: "/api/status/400", description: "Simulated 400 Bad Request" },
+            { id: 3, path: "/api/status/500", description: "Simulated 500 Fault" }
+          ]
+        };
+      } else {
+        memoryDB = {
+          products: [
+            { id: "prod-1", title: "Wireless Headphones", price: 99.99, sku: "SKU-9921", inStock: true },
+            { id: "prod-2", title: "Mechanical Keyboard", price: 149.00, sku: "SKU-8812", inStock: true },
+            { id: "prod-3", title: "USB-C Cable", price: 12.50, sku: "SKU-3321", inStock: false }
+          ],
+          customers: [
+            { id: "cust-1", name: "Grace Hopper", email: "grace@navy.mil", city: "Arlington" },
+            { id: "cust-2", name: "Katherine Johnson", email: "katherine@nasa.gov", city: "Hampton" }
+          ],
+          orders: [
+            { id: "ord-1", customerId: "cust-1", totalAmount: 149.00, currency: "USD", status: "shipped" }
+          ]
+        };
+      }
+      activeCollection = Object.keys(memoryDB)[0];
+      renderDatabase();
+      alert('Preset template "' + template + '" loaded successfully into client sandbox!');
     }
 
     function renderDatabase() {

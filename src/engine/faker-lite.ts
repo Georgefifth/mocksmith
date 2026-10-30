@@ -136,6 +136,26 @@ export function generateValueForProperty(propName: string, schema?: Record<strin
     return `+1-555-${randomInt(100, 999)}-${randomInt(1000, 9999)}`;
   }
 
+  if (lowerName === 'ip' || lowerName === 'ipv4' || lowerName.includes('ip_address')) {
+    return `192.168.${randomInt(1, 254)}.${randomInt(1, 254)}`;
+  }
+
+  if (lowerName.includes('currency')) {
+    return pick(['USD', 'EUR', 'GBP', 'CAD', 'JPY']);
+  }
+
+  if (lowerName.includes('zip') || lowerName.includes('postal')) {
+    return String(randomInt(10000, 99999));
+  }
+
+  if (lowerName.includes('sku')) {
+    return `SKU-${randomInt(1000, 9999)}-${pick(['A', 'B', 'X'])}`;
+  }
+
+  if (lowerName.includes('color') || lowerName === 'colour') {
+    return pick(['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4']);
+  }
+
   if (lowerName.includes('title') || lowerName.includes('headline')) {
     return `Sample ${propName.charAt(0).toUpperCase() + propName.slice(1)} Item #${randomInt(10, 99)}`;
   }
@@ -204,6 +224,32 @@ export function generateEntityFromSchema(
     }
   }
 
+  // Handle polymorphic oneOf / anyOf with optional discriminator
+  const variants = targetSchema.oneOf || targetSchema.anyOf;
+  if (Array.isArray(variants) && variants.length > 0) {
+    let chosenVariant = variants[0];
+    const discriminator = targetSchema.discriminator;
+
+    if (discriminator && discriminator.propertyName) {
+      const prop = discriminator.propertyName;
+      if (discriminator.mapping && typeof discriminator.mapping === 'object') {
+        const mappingKeys = Object.keys(discriminator.mapping);
+        if (mappingKeys.length > 0) {
+          const chosenKey = pick(mappingKeys);
+          const mappedRef = discriminator.mapping[chosenKey];
+          const refName = mappedRef?.split('/').pop();
+          if (refName && allSchemas[refName]) {
+            const entity = generateEntityFromSchema(allSchemas[refName], defaultId, allSchemas, depth + 1);
+            entity[prop] = chosenKey;
+            return entity;
+          }
+        }
+      }
+    }
+
+    return generateEntityFromSchema(chosenVariant, defaultId, allSchemas, depth + 1);
+  }
+
   const properties = targetSchema.properties || {};
   const propNames = Object.keys(properties);
 
@@ -242,8 +288,10 @@ export function generateEntityFromSchema(
     }
   }
 
-  if (!result.id) {
-    result.id = defaultId || generateUUID();
+  if (defaultId !== undefined) {
+    result.id = defaultId;
+  } else if (!result.id) {
+    result.id = generateUUID();
   }
 
   return result;

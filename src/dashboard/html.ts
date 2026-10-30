@@ -208,6 +208,7 @@ export function renderDashboardHtml(): string {
             <span id="console-res-status" style="font-weight: 700; font-size: 0.8rem;"></span>
             <span id="console-res-time" style="font-size: 0.75rem; color: var(--text-muted);"></span>
           </div>
+          <div id="console-validation-diag" style="display: none; background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.35); border-radius: 4px; padding: 0.5rem; margin-bottom: 0.5rem; font-size: 0.75rem; color: #fca5a5;"></div>
           <pre id="console-res-body" style="font-size: 0.75rem; color: #38bdf8; max-height: 150px; overflow-y: auto;"></pre>
         </div>
       </div>
@@ -252,12 +253,25 @@ export function renderDashboardHtml(): string {
           </div>
         </div>
 
-        <!-- Scenario Bar -->
-        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap;">
-          <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">State Scenario:</span>
-          <select id="snapshot-select" class="form-select" style="width: 170px; padding: 0.35rem 0.5rem; font-size: 0.8rem;"></select>
-          <button class="btn btn-secondary btn-sm" onclick="restoreSelectedSnapshot()">Load Scenario</button>
-          <button class="btn btn-secondary btn-sm" onclick="promptSaveSnapshot()">Save Scenario...</button>
+        <!-- Scenario & Template Bar -->
+        <div style="display: flex; gap: 0.75rem; align-items: center; margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap;">
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Scenario:</span>
+            <select id="snapshot-select" class="form-select" style="width: 140px; padding: 0.35rem 0.5rem; font-size: 0.8rem;"></select>
+            <button class="btn btn-secondary btn-sm" onclick="restoreSelectedSnapshot()">Load Scenario</button>
+            <button class="btn btn-secondary btn-sm" onclick="promptSaveSnapshot()">Save Scenario...</button>
+          </div>
+          <div style="border-left: 1px solid var(--border); height: 20px;"></div>
+          <div style="display: flex; gap: 0.4rem; align-items: center;">
+            <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">Preset:</span>
+            <select id="template-select" class="form-select" style="width: 180px; padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+              <option value="ecommerce">🛒 E-Commerce Cloud</option>
+              <option value="petstore">🐾 OAI Petstore Canonical</option>
+              <option value="social">💬 Social Network & Geo</option>
+              <option value="chaos">⚡ Chaos Sandbox</option>
+            </select>
+            <button class="btn btn-secondary btn-sm" onclick="loadSelectedTemplate()">Load Preset</button>
+          </div>
         </div>
 
         <div class="db-tabs" id="db-resource-tabs"></div>
@@ -560,6 +574,16 @@ export function renderDashboardHtml(): string {
         document.getElementById('console-res-status').textContent = 'HTTP ' + res.status + ' ' + res.statusText;
         document.getElementById('console-res-status').className = res.status >= 400 ? 'status-4xx' : 'status-2xx';
         document.getElementById('console-res-time').textContent = duration + ' ms';
+
+        const diagBox = document.getElementById('console-validation-diag');
+        if (res.status === 400 && resData && resData.errors && Array.isArray(resData.errors)) {
+          diagBox.style.display = 'block';
+          diagBox.innerHTML = '<strong>⚠️ Contract Validation Violations:</strong><br/>' +
+            resData.errors.map(function(e) { return '• <code>' + e.field + '</code>: ' + e.message; }).join('<br/>');
+        } else {
+          diagBox.style.display = 'none';
+        }
+
         document.getElementById('console-res-body').textContent = JSON.stringify(resData, null, 2);
       } catch (err) {
         document.getElementById('console-response-box').style.display = 'block';
@@ -636,6 +660,15 @@ export function renderDashboardHtml(): string {
         body: JSON.stringify({ name })
       });
       await fetchSnapshots();
+    }
+
+    async function loadSelectedTemplate() {
+      const template = document.getElementById('template-select').value;
+      if (!confirm('Load preset template "' + template + '"? Current in-memory state will be re-seeded.')) return;
+      await fetch('/_mocksmith/api/templates/' + template + '/load', { method: 'POST' });
+      await fetchDatabaseState();
+      await fetchRoutes();
+      alert('Preset template "' + template + '" successfully loaded!');
     }
 
     function renderDatabaseTabs() {

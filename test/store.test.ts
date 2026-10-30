@@ -90,4 +90,34 @@ describe('RelationalStore', () => {
     expect(bobPosts.length).toBe(1);
     expect(bobPosts[0].id).toBe('p3');
   });
+
+  it('should support relational query operators (_gte, _lte, _ne, _like)', () => {
+    store.seed('products', [
+      { id: 1, name: 'Wireless Headphones', price: 99.99, inStock: true },
+      { id: 2, name: 'Mechanical Keyboard', price: 149.00, inStock: true },
+      { id: 3, name: 'USB-C Cable', price: 12.50, inStock: false },
+      { id: 4, name: 'Monitor 4K', price: 399.00, inStock: true }
+    ]);
+
+    // Range filtering: price between 50 and 200
+    const midRange = store.list('products', {
+      params: { price_gte: 50, price_lte: 200 }
+    });
+    expect(midRange.total).toBe(2);
+    expect(midRange.data.map((p) => p.name)).toEqual(['Wireless Headphones', 'Mechanical Keyboard']);
+
+    // Negative filtering: _ne
+    const outOfStock = store.list('products', {
+      params: { inStock_ne: 'true' }
+    });
+    expect(outOfStock.total).toBe(1);
+    expect(outOfStock.data[0].id).toBe(3);
+
+    // Substring filtering: _like
+    const keyboard = store.list('products', {
+      params: { name_like: 'keyboard' }
+    });
+    expect(keyboard.total).toBe(1);
+    expect(keyboard.data[0].id).toBe(2);
+  });
 });
