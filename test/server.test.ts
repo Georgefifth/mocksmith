@@ -129,4 +129,46 @@ describe('MockSmithServer HTTP End-to-End', () => {
     const delRes = await fetch(`${baseUrl}/_mocksmith/api/webhooks/${sub.id}`, { method: 'DELETE' });
     expect(delRes.status).toBe(200);
   });
+
+  it('should support snapshot listing, saving, and restoring', async () => {
+    // 1. List initial snapshots
+    const listRes = await fetch(`${baseUrl}/_mocksmith/api/snapshots`);
+    expect(listRes.status).toBe(200);
+    const list = await listRes.json();
+    expect(list.some((s: any) => s.name === 'initial-seed')).toBe(true);
+    expect(list.some((s: any) => s.name === 'empty-state')).toBe(true);
+
+    // 2. Save custom snapshot
+    const saveRes = await fetch(`${baseUrl}/_mocksmith/api/snapshots`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: 'test-backup' })
+    });
+    expect(saveRes.status).toBe(201);
+
+    // 3. Restore empty-state
+    const restoreRes = await fetch(`${baseUrl}/_mocksmith/api/snapshots/empty-state/restore`, {
+      method: 'POST'
+    });
+    expect(restoreRes.status).toBe(200);
+
+    // Verify database is now empty
+    const checkRes = await fetch(`${baseUrl}/api/users`);
+    const users = await checkRes.json();
+    expect(users.length).toBe(0);
+
+    // 4. Restore initial-seed
+    await fetch(`${baseUrl}/_mocksmith/api/snapshots/initial-seed/restore`, { method: 'POST' });
+    const checkRestored = await fetch(`${baseUrl}/api/users`);
+    const restoredUsers = await checkRestored.json();
+    expect(restoredUsers.length).toBe(5);
+  });
+
+  it('should return auto-synthesized OpenAPI spec from recorded traffic', async () => {
+    const specRes = await fetch(`${baseUrl}/_mocksmith/api/recorder/spec`);
+    expect(specRes.status).toBe(200);
+    const spec = await specRes.json();
+    expect(spec.openapi).toBe('3.0.3');
+    expect(spec.paths['/api/users']).toBeDefined();
+  });
 });

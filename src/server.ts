@@ -4,6 +4,8 @@ import { generateUUID } from './engine/faker-lite.js';
 import { validatePayload } from './engine/validator.js';
 import { CollectionExporter } from './engine/exporter.js';
 import { WebhookEngine } from './engine/webhook.js';
+import { TrafficRecorder } from './engine/recorder.js';
+import { SnapshotManager } from './engine/snapshots.js';
 import type { RelationalStore } from './engine/store.js';
 import type { ChaosEngine } from './engine/chaos.js';
 import type { RouteDefinition, RequestLogEntry } from './types.js';
@@ -19,21 +21,32 @@ export class MockSmithServer {
   private server: http.Server | null = null;
   private sseClients: Set<http.ServerResponse> = new Set();
   private initialSeedData: Record<string, Record<string, any>[]> = {};
+  private onLogCallbacks: Array<(entry: RequestLogEntry) => void> = [];
   public webhookEngine: WebhookEngine;
+  public recorder: TrafficRecorder;
+  public snapshots: SnapshotManager;
 
   constructor(
     private store: RelationalStore,
     private chaos: ChaosEngine,
     private routes: RouteDefinition[],
     private options: ServerOptions = { port: 4000 },
-    webhookEngine?: WebhookEngine
+    webhookEngine?: WebhookEngine,
+    recorder?: TrafficRecorder
   ) {
     this.initialSeedData = store.exportSnapshot();
     this.webhookEngine = webhookEngine || new WebhookEngine();
+    this.recorder = recorder || new TrafficRecorder({ active: true });
+    this.snapshots = new SnapshotManager(this.initialSeedData);
+  }
+
+  public onLog(cb: (entry: RequestLogEntry) => void): void {
+    this.onLogCallbacks.push(cb);
   }
 
   public setInitialSeed(data: Record<string, Record<string, any>[]>): void {
     this.initialSeedData = JSON.parse(JSON.stringify(data));
+    this.snapshots.save('initial-seed', data);
   }
 
   public listen(): Promise<number> {
@@ -282,6 +295,9 @@ export class MockSmithServer {
     res.writeHead(statusCode, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify(responseBody, null, 2));
 
+    // Record traffic
+    this.recorder.record(method, pathname, body, responseBody, statusCode);
+
     // 6. Broadcast Log to SSE Dashboard
     this.broadcastLog({
       id: generateUUID(),
@@ -435,6 +451,78 @@ export class MockSmithServer {
       return;
     }
 
+    // Snapshot & Scenario Endpoints
+    if (pathname === '/_mocksmith/api/snapshots' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify(this.snapshots.list(), null, 2));
+      return;
+    }
+
+    if (pathname === '/_mocksmith/api/snapshots' && method === 'POST') {
+      this.readRequestBody(req).then((body) => {
+        const name = body?.name || `snapshot-${Date.now()}`;
+        this.snapshots.save(name, this.store.exportSnapshot());
+        res.writeHead(201, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ success: true, name }));
+      });
+      return;
+    }
+
+    if (pathname.startsWith('/_mocksmith/api/snapshots/') && pathname.endsWith('/restore') && method === 'POST') {
+      const name = pathname.replace('/_mocksmith/api/snapshots/', '').replace('/restore', '');
+      const data = this.snapshots.get(name);
+      if (!data) {
+        res.writeHead(404, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: `Snapshot '${name}' not found` }));
+        return;
+      }
+      this.store.importSnapshot(data);
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: true, message: `Restored snapshot '${name}'` }));
+      return;
+    }
+
+    if (pathname.startsWith('/_mocksmith/api/snapshots/') && method === 'DELETE') {
+      const name = pathname.replace('/_mocksmith/api/snapshots/', '');
+      const removed = this.snapshots.delete(name);
+      res.writeHead(removed ? 200 : 400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ success: removed }));
+      return;
+    }
+
+    // Recorder Endpoints
+    if (pathname === '/_mocksmith/api/recorder/spec' && method === 'GET') {
+      const spec = this.recorder.generateOpenApiSpec();
+      res.writeHead(200, {
+        'Content-Type': 'application/json',
+        'Content-Disposition': 'attachment; filename="recorded-openapi.json"'
+      });
+      res.end(JSON.stringify(spec, null, 2));
+      return;
+    }
+
+    if (pathname === '/_mocksmith/api/recorder/toggle' && method === 'POST') {
+      if (this.recorder.getStatus()) {
+        this.recorder.disable();
+      } else {
+        this.recorder.enable();
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ active: this.recorder.getStatus() }));
+      return;
+    }
+
+    if (pathname === '/_mocksmith/api/recorder/status' && method === 'GET') {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          active: this.recorder.getStatus(),
+          routesCount: this.recorder.getRecordedRoutes().length
+        })
+      );
+      return;
+    }
+
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Dashboard endpoint not found' }));
   }
@@ -480,6 +568,8 @@ export class MockSmithServer {
         'X-MockSmith-Proxy': 'true'
       });
       res.end(resText);
+
+      this.recorder.record(method, pathname, body, resData, proxyRes.status);
 
       this.broadcastLog({
         id: generateUUID(),
@@ -568,6 +658,11 @@ export class MockSmithServer {
     const payload = `data: ${JSON.stringify(entry)}\n\n`;
     for (const client of this.sseClients) {
       client.write(payload);
+    }
+    for (const cb of this.onLogCallbacks) {
+      try {
+        cb(entry);
+      } catch {}
     }
   }
 

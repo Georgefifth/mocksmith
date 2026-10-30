@@ -168,6 +168,7 @@ export function renderDashboardHtml(): string {
       <span class="status-pill"><span class="pulse-dot"></span> LIVE ENGINE</span>
       <a href="/_mocksmith/api/export/openapi" download="mocksmith-openapi.json" class="btn btn-secondary btn-sm">Export OpenAPI</a>
       <a href="/_mocksmith/api/export/bruno" download="mocksmith-bruno.json" class="btn btn-secondary btn-sm">Export Bruno</a>
+      <a href="/_mocksmith/api/recorder/spec" download="synthesized-openapi.json" class="btn btn-secondary btn-sm">Synthesized Spec</a>
       <button class="btn btn-secondary btn-sm" onclick="resetDatabaseState()">Reset State</button>
     </div>
   </header>
@@ -250,6 +251,15 @@ export function renderDashboardHtml(): string {
             <button class="btn btn-sm" onclick="promptAddRecord()">+ Add Record</button>
           </div>
         </div>
+
+        <!-- Scenario Bar -->
+        <div style="display: flex; gap: 0.5rem; align-items: center; margin-bottom: 1rem; padding: 0.6rem 0.8rem; background: var(--bg); border: 1px solid var(--border); border-radius: 6px; flex-wrap: wrap;">
+          <span style="font-size: 0.8rem; font-weight: 600; color: var(--text-muted);">State Scenario:</span>
+          <select id="snapshot-select" class="form-select" style="width: 170px; padding: 0.35rem 0.5rem; font-size: 0.8rem;"></select>
+          <button class="btn btn-secondary btn-sm" onclick="restoreSelectedSnapshot()">Load Scenario</button>
+          <button class="btn btn-secondary btn-sm" onclick="promptSaveSnapshot()">Save Scenario...</button>
+        </div>
+
         <div class="db-tabs" id="db-resource-tabs"></div>
         <div class="traffic-table-wrapper">
           <table id="state-table">
@@ -581,9 +591,51 @@ export function renderDashboardHtml(): string {
         const res = await fetch('/_mocksmith/api/state');
         dbSnapshot = await res.json();
         renderDatabaseTabs();
+        fetchSnapshots();
       } catch (err) {
         console.error('Failed to fetch state:', err);
       }
+    }
+
+    async function fetchSnapshots() {
+      try {
+        const res = await fetch('/_mocksmith/api/snapshots');
+        const list = await res.json();
+        const select = document.getElementById('snapshot-select');
+        if (!select) return;
+        const currentVal = select.value;
+        select.innerHTML = '';
+        list.forEach(s => {
+          const opt = document.createElement('option');
+          opt.value = s.name;
+          opt.textContent = s.name + ' (' + s.rowCount + ' rows)';
+          select.appendChild(opt);
+        });
+        if (currentVal && list.some(s => s.name === currentVal)) {
+          select.value = currentVal;
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    }
+
+    async function restoreSelectedSnapshot() {
+      const select = document.getElementById('snapshot-select');
+      const name = select.value;
+      if (!name) return;
+      await fetch('/_mocksmith/api/snapshots/' + name + '/restore', { method: 'POST' });
+      await fetchDatabaseState();
+    }
+
+    async function promptSaveSnapshot() {
+      const name = prompt('Enter a name for this database scenario / snapshot:', 'scenario-' + Date.now());
+      if (!name) return;
+      await fetch('/_mocksmith/api/snapshots', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name })
+      });
+      await fetchSnapshots();
     }
 
     function renderDatabaseTabs() {

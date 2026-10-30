@@ -5,6 +5,7 @@ import { RelationalStore } from './engine/store.js';
 import { ChaosEngine } from './engine/chaos.js';
 import { SchemaParser } from './engine/schema-parser.js';
 import { setRandomSeed } from './engine/faker-lite.js';
+import { TrafficRecorder } from './engine/recorder.js';
 import { MockSmithServer } from './server.js';
 
 export function runCLI(args: string[] = process.argv): void {
@@ -24,6 +25,7 @@ export function runCLI(args: string[] = process.argv): void {
     .option('--persist <path>', 'Persist state mutations to a local JSON file')
     .option('--seed <number>', 'Deterministic PRNG seed for reproducible mock data')
     .option('--proxy <url>', 'Proxy unmocked routes to an upstream real backend URL')
+    .option('--record [path]', 'Record live HTTP traffic and auto-synthesize OpenAPI 3.0 specification')
     .option('--demo', 'Start instant interactive demo store with Users, Products, and Orders', false)
     .action(async (specPath, options) => {
       printBanner();
@@ -69,11 +71,41 @@ export function runCLI(args: string[] = process.argv): void {
         return;
       }
 
-      const server = new MockSmithServer(store, chaos, parseResult.routes, {
-        port,
-        proxyUrl: options.proxy
+      const recorder = new TrafficRecorder({
+        active: !!options.record || true,
+        outputPath: typeof options.record === 'string' ? path.resolve(options.record) : undefined
       });
+
+      const server = new MockSmithServer(
+        store,
+        chaos,
+        parseResult.routes,
+        {
+          port,
+          proxyUrl: options.proxy
+        },
+        undefined,
+        recorder
+      );
       server.setInitialSeed(parseResult.initialData);
+
+      // Terminal Live Request Logging
+      server.onLog((entry) => {
+        const time = new Date(entry.timestamp).toLocaleTimeString();
+        const statusColor =
+          entry.status >= 500 ? pc.red : entry.status >= 400 ? pc.yellow : pc.green;
+        const methodColor = getMethodColor(entry.method);
+        const fault = entry.chaosInjected?.errorInjected
+          ? pc.red(` [FAULT ${entry.status}]`)
+          : entry.chaosInjected?.latency
+          ? pc.yellow(` [+${entry.chaosInjected.latency}ms]`)
+          : '';
+        console.log(
+          `  ${pc.dim(time)} ${methodColor(entry.method.padEnd(6))} ${entry.url} -> ${statusColor(
+            String(entry.status)
+          )} ${pc.dim(`(${entry.durationMs}ms)`)}${fault}`
+        );
+      });
 
       try {
         const activePort = await server.listen();

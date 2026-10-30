@@ -6,5 +6,7 @@ export * from './engine/faker-lite.js';
 export * from './engine/validator.js';
 export * from './engine/exporter.js';
 export * from './engine/webhook.js';
+export * from './engine/recorder.js';
+export * from './engine/snapshots.js';
 export * from './server.js';
 export { runCLI } from './cli.js';
