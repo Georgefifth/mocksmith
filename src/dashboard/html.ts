@@ -55,7 +55,7 @@ export function renderDashboardHtml(): string {
     /* Navigation Tabs */
     .tabs {
       background: var(--card-bg); border-bottom: 1px solid var(--border);
-      display: flex; gap: 0.5rem; padding: 0 1.5rem;
+      display: flex; gap: 0.5rem; padding: 0 1.5rem; flex-wrap: wrap;
     }
     .tab-btn {
       background: transparent; border: none; outline: none;
@@ -141,6 +141,17 @@ export function renderDashboardHtml(): string {
       border-radius: 8px; padding: 1rem; margin-bottom: 1.25rem;
     }
     .console-bar { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; margin-bottom: 0.75rem; }
+
+    /* Modal Dialog */
+    .modal-overlay {
+      position: fixed; inset: 0; background: rgba(0, 0, 0, 0.75);
+      display: none; align-items: center; justify-content: center; z-index: 9999;
+    }
+    .modal-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 10px; width: 90%; max-width: 550px; padding: 1.5rem;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
+    }
   </style>
 </head>
 <body>
@@ -150,7 +161,7 @@ export function renderDashboardHtml(): string {
       <div class="brand-logo">M</div>
       <div>
         <div class="brand-title">MockSmith Studio</div>
-        <div class="brand-subtitle">Stateful Mock API Server & Chaos Sandbox v1.1</div>
+        <div class="brand-subtitle">Stateful Mock API Server & Chaos Sandbox v1.2</div>
       </div>
     </div>
     <div class="status-bar">
@@ -164,6 +175,7 @@ export function renderDashboardHtml(): string {
   <div class="tabs">
     <button class="tab-btn active" onclick="switchTab('traffic')">Live Traffic & Console (<span id="req-count">0</span>)</button>
     <button class="tab-btn" onclick="switchTab('database')">Relational State Tables</button>
+    <button class="tab-btn" onclick="switchTab('routes')">API Catalog & Routes</button>
     <button class="tab-btn" onclick="switchTab('chaos')">Chaos & Fault Sandbox</button>
     <button class="tab-btn" onclick="switchTab('webhooks')">Webhooks & Outbound Events (<span id="wh-count">0</span>)</button>
   </div>
@@ -243,6 +255,30 @@ export function renderDashboardHtml(): string {
           <table id="state-table">
             <thead id="state-thead"></thead>
             <tbody id="state-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: API Catalog & Routes -->
+    <div id="tab-routes" class="tab-content">
+      <div class="panel">
+        <div class="panel-title">
+          <span>Registered Mock Routes & API Catalog</span>
+          <span style="font-size: 0.8rem; color: var(--text-muted);" id="routes-total-count">0 routes</span>
+        </div>
+        <div class="traffic-table-wrapper">
+          <table>
+            <thead>
+              <tr>
+                <th style="width: 80px;">Method</th>
+                <th>Route Path</th>
+                <th>Summary & Description</th>
+                <th style="width: 120px;">Resource</th>
+                <th style="width: 110px;">Action</th>
+              </tr>
+            </thead>
+            <tbody id="routes-tbody"></tbody>
           </table>
         </div>
       </div>
@@ -373,10 +409,27 @@ export function renderDashboardHtml(): string {
     </div>
   </main>
 
+  <!-- Visual Record Editor Modal -->
+  <div id="record-modal" class="modal-overlay">
+    <div class="modal-card">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+        <h3 id="modal-title" style="font-size: 1.1rem; font-weight: 700;">Add Record</h3>
+        <button class="btn btn-secondary btn-sm" onclick="closeRecordModal()">✕</button>
+      </div>
+      <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem;">Edit JSON Payload:</div>
+      <textarea id="modal-json-text" class="form-textarea" rows="10" style="font-family: monospace; font-size: 0.8rem; margin-bottom: 1rem;"></textarea>
+      <div style="display: flex; justify-content: flex-end; gap: 0.75rem;">
+        <button class="btn btn-secondary" onclick="closeRecordModal()">Cancel</button>
+        <button class="btn" id="modal-save-btn" onclick="submitRecordModal()">Save Record</button>
+      </div>
+    </div>
+  </div>
+
   <script>
     let trafficLogs = [];
     let currentActiveCollection = '';
     let dbSnapshot = {};
+    let modalAction = { type: 'add', id: null, collection: '' };
 
     document.getElementById('req-method').addEventListener('change', (e) => {
       const showBody = ['POST', 'PUT', 'PATCH'].includes(e.target.value);
@@ -393,6 +446,8 @@ export function renderDashboardHtml(): string {
 
       if (tabName === 'database') {
         fetchDatabaseState();
+      } else if (tabName === 'routes') {
+        fetchRoutes();
       } else if (tabName === 'webhooks') {
         fetchWebhooks();
         fetchWebhookDeliveries();
@@ -592,19 +647,45 @@ export function renderDashboardHtml(): string {
       });
     }
 
-    async function promptAddRecord() {
+    function promptAddRecord() {
       const sample = dbSnapshot[currentActiveCollection]?.[0] || { name: 'Demo Item' };
       const template = { ...sample };
       delete template.id;
       delete template.createdAt;
       delete template.updatedAt;
 
-      const input = prompt('Enter JSON payload for new ' + currentActiveCollection + ':', JSON.stringify(template, null, 2));
-      if (!input) return;
+      modalAction = { type: 'add', id: null, collection: currentActiveCollection };
+      document.getElementById('modal-title').textContent = 'Add Record to ' + currentActiveCollection;
+      document.getElementById('modal-json-text').value = JSON.stringify(template, null, 2);
+      document.getElementById('record-modal').style.display = 'flex';
+    }
 
+    function promptEditRecord(id) {
+      const record = dbSnapshot[currentActiveCollection]?.find(r => String(r.id) === String(id));
+      if (!record) return;
+
+      modalAction = { type: 'edit', id, collection: currentActiveCollection };
+      document.getElementById('modal-title').textContent = 'Edit ' + currentActiveCollection + ' #' + id;
+      document.getElementById('modal-json-text').value = JSON.stringify(record, null, 2);
+      document.getElementById('record-modal').style.display = 'flex';
+    }
+
+    function closeRecordModal() {
+      document.getElementById('record-modal').style.display = 'none';
+    }
+
+    async function submitRecordModal() {
+      const jsonText = document.getElementById('modal-json-text').value;
+      let payload;
       try {
-        const payload = JSON.parse(input);
-        const res = await fetch('/api/' + currentActiveCollection, {
+        payload = JSON.parse(jsonText);
+      } catch (err) {
+        alert('Invalid JSON: ' + err.message);
+        return;
+      }
+
+      if (modalAction.type === 'add') {
+        const res = await fetch('/api/' + modalAction.collection, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -614,22 +695,8 @@ export function renderDashboardHtml(): string {
           alert('Failed to create: ' + (err.message || res.statusText));
           return;
         }
-        await fetchDatabaseState();
-      } catch (e) {
-        alert('Invalid JSON: ' + e.message);
-      }
-    }
-
-    async function promptEditRecord(id) {
-      const record = dbSnapshot[currentActiveCollection]?.find(r => String(r.id) === String(id));
-      if (!record) return;
-
-      const input = prompt('Edit JSON for ' + currentActiveCollection + ' #' + id + ':', JSON.stringify(record, null, 2));
-      if (!input) return;
-
-      try {
-        const payload = JSON.parse(input);
-        const res = await fetch('/api/' + currentActiveCollection + '/' + id, {
+      } else {
+        const res = await fetch('/api/' + modalAction.collection + '/' + modalAction.id, {
           method: 'PATCH',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify(payload)
@@ -639,10 +706,10 @@ export function renderDashboardHtml(): string {
           alert('Failed to update: ' + (err.message || res.statusText));
           return;
         }
-        await fetchDatabaseState();
-      } catch (e) {
-        alert('Invalid JSON: ' + e.message);
       }
+
+      closeRecordModal();
+      await fetchDatabaseState();
     }
 
     async function deleteRecord(id) {
@@ -656,6 +723,49 @@ export function renderDashboardHtml(): string {
         await fetch('/_mocksmith/api/reset', { method: 'POST' });
         await fetchDatabaseState();
         alert('Database state reseeded successfully!');
+      }
+    }
+
+    // Routes Catalog
+    async function fetchRoutes() {
+      try {
+        const res = await fetch('/_mocksmith/api/routes');
+        const routes = await res.json();
+        renderRoutes(routes);
+      } catch (err) {
+        console.error('Failed to fetch routes:', err);
+      }
+    }
+
+    function renderRoutes(routes) {
+      document.getElementById('routes-total-count').textContent = routes.length + ' routes registered';
+      const tbody = document.getElementById('routes-tbody');
+      tbody.innerHTML = '';
+
+      routes.forEach(r => {
+        const tr = document.createElement('tr');
+        const methodClass = 'method-' + r.method.toLowerCase();
+        tr.innerHTML = \`
+          <td><span class="method-badge \${methodClass}">\${r.method}</span></td>
+          <td style="font-family: monospace; font-size: 0.85rem; font-weight: 600;">\${r.path}</td>
+          <td style="color: var(--text-muted);">\${r.summary || '-'}</td>
+          <td><span class="chaos-tag">\${r.resource}</span></td>
+          <td>
+            <button class="btn btn-secondary btn-sm" onclick='tryRouteInConsole(\${JSON.stringify(r.method)}, \${JSON.stringify(r.path)})'>Try It</button>
+          </td>
+        \`;
+        tbody.appendChild(tr);
+      });
+    }
+
+    function tryRouteInConsole(method, path) {
+      switchTab('traffic');
+      document.getElementById('req-method').value = method;
+      document.getElementById('req-url').value = path.replace(/:([a-zA-Z0-9_]+)/g, '1');
+      const showBody = ['POST', 'PUT', 'PATCH'].includes(method);
+      document.getElementById('req-body-container').style.display = showBody ? 'block' : 'none';
+      if (showBody) {
+        document.getElementById('req-body-text').value = JSON.stringify({ name: 'Demo Item' }, null, 2);
       }
     }
 
@@ -784,7 +894,7 @@ export function renderDashboardHtml(): string {
         const timeStr = new Date(d.timestamp).toLocaleTimeString();
         const statusClass = d.status === 200 ? 'status-2xx' : (d.status === 0 ? 'status-5xx' : 'status-4xx');
         tr.innerHTML = \`
-          <td style="color: var(--text-muted);">\${timeStr}</td>
+          <td style="color: var(--text-muted); font-size: 0.75rem;">\${timeStr}</td>
           <td><span class="chaos-tag">\${d.event}</span></td>
           <td style="font-family: monospace; font-size: 0.8rem;">\${d.targetUrl}</td>
           <td><span class="status-badge \${statusClass}">\${d.status === 0 ? 'ERR' : d.status}</span></td>

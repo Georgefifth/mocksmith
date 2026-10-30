@@ -12,6 +12,7 @@ export interface ServerOptions {
   port: number;
   host?: string;
   cors?: boolean;
+  proxyUrl?: string;
 }
 
 export class MockSmithServer {
@@ -139,6 +140,9 @@ export class MockSmithServer {
     let responseBody: any = null;
 
     if (!match) {
+      if (this.options.proxyUrl) {
+        return this.forwardProxy(req, res, pathname, method, body, startTime);
+      }
       statusCode = 404;
       responseBody = {
         error: 'Not Found',
@@ -433,6 +437,75 @@ export class MockSmithServer {
 
     res.writeHead(404, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ error: 'Dashboard endpoint not found' }));
+  }
+
+  private async forwardProxy(
+    req: http.IncomingMessage,
+    res: http.ServerResponse,
+    pathname: string,
+    method: string,
+    body: any,
+    startTime: number
+  ): Promise<void> {
+    const targetBase = this.options.proxyUrl!.replace(/\/+$/, '');
+    const urlObj = new URL(req.url || '/', 'http://localhost');
+    const targetFull = `${targetBase}${pathname}${urlObj.search}`;
+
+    try {
+      const fetchHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (k.toLowerCase() !== 'host' && v) {
+          fetchHeaders[k] = Array.isArray(v) ? v.join(', ') : v;
+        }
+      }
+
+      const proxyRes = await fetch(targetFull, {
+        method,
+        headers: fetchHeaders,
+        body: ['POST', 'PUT', 'PATCH'].includes(method) && body
+          ? typeof body === 'string'
+            ? body
+            : JSON.stringify(body)
+          : undefined
+      });
+
+      const resText = await proxyRes.text();
+      let resData: any = resText;
+      try {
+        resData = JSON.parse(resText);
+      } catch {}
+
+      res.writeHead(proxyRes.status, {
+        'Content-Type': proxyRes.headers.get('content-type') || 'application/json',
+        'X-MockSmith-Proxy': 'true'
+      });
+      res.end(resText);
+
+      this.broadcastLog({
+        id: generateUUID(),
+        timestamp: new Date().toISOString(),
+        method,
+        url: req.url || '/',
+        status: proxyRes.status,
+        durationMs: Date.now() - startTime,
+        requestHeaders: this.sanitizeHeaders(req.headers),
+        requestBody: body,
+        responseBody: resData,
+        chaosInjected: {
+          latency: 0,
+          errorInjected: false,
+          reason: `Proxied to ${targetFull}`
+        }
+      });
+    } catch (err: any) {
+      res.writeHead(502, { 'Content-Type': 'application/json' });
+      res.end(
+        JSON.stringify({
+          error: 'Bad Gateway',
+          message: `Proxy failed to connect to ${targetFull}: ${err.message}`
+        })
+      );
+    }
   }
 
   private matchRoute(

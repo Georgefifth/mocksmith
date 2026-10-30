@@ -23,6 +23,7 @@ export function runCLI(args: string[] = process.argv): void {
     .option('--auth', 'Enable Bearer authorization simulation', false)
     .option('--persist <path>', 'Persist state mutations to a local JSON file')
     .option('--seed <number>', 'Deterministic PRNG seed for reproducible mock data')
+    .option('--proxy <url>', 'Proxy unmocked routes to an upstream real backend URL')
     .option('--demo', 'Start instant interactive demo store with Users, Products, and Orders', false)
     .action(async (specPath, options) => {
       printBanner();
@@ -68,7 +69,10 @@ export function runCLI(args: string[] = process.argv): void {
         return;
       }
 
-      const server = new MockSmithServer(store, chaos, parseResult.routes, { port });
+      const server = new MockSmithServer(store, chaos, parseResult.routes, {
+        port,
+        proxyUrl: options.proxy
+      });
       server.setInitialSeed(parseResult.initialData);
 
       try {
