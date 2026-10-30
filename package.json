@@ -1,0 +1,41 @@
+{
+  "name": "mocksmith",
+  "version": "1.0.0",
+  "description": "Zero-configuration stateful mock API server and network chaos sandbox",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "bin": {
+    "mocksmith": "./bin/mocksmith.js"
+  },
+  "type": "module",
+  "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format esm --clean && tsc --emitDeclarationOnly",
+    "dev": "tsx src/cli.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "mock",
+    "openapi",
+    "swagger",
+    "stateful",
+    "chaos-engineering",
+    "rest-api",
+    "testing",
+    "developer-tools"
+  ],
+  "author": "MockSmith Team",
+  "license": "MIT",
+  "dependencies": {
+    "commander": "^13.1.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.7.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.10",
+    "tsup": "^8.4.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "vitest": "^3.0.8"
+  }
+}

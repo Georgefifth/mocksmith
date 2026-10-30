@@ -1,0 +1,11 @@
+{
+  "tasks": [
+    { "id": 1, "title": "Implement authentication screen", "status": "done" },
+    { "id": 2, "title": "Wire up MockSmith chaos testing", "status": "in_progress" },
+    { "id": 3, "title": "Conduct user interview", "status": "todo" }
+  ],
+  "categories": [
+    { "id": "eng", "name": "Engineering" },
+    { "id": "qa", "name": "Quality Assurance" }
+  ]
+}

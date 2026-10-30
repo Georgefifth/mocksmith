@@ -1,0 +1,50 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "HyperMarket E-Commerce API",
+    "version": "2.1.0"
+  },
+  "paths": {
+    "/products": {
+      "get": { "summary": "Get all products" },
+      "post": { "summary": "Create new product" }
+    },
+    "/products/{id}": {
+      "get": { "summary": "Get product by ID" },
+      "put": { "summary": "Replace product" },
+      "patch": { "summary": "Partial update product" },
+      "delete": { "summary": "Delete product" }
+    },
+    "/products/{productId}/reviews": {
+      "get": { "summary": "Get reviews for product" }
+    },
+    "/reviews": {
+      "get": { "summary": "List all reviews" },
+      "post": { "summary": "Post review" }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Product": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "string", "format": "uuid" },
+          "title": { "type": "string" },
+          "price": { "type": "number" },
+          "category": { "type": "string" },
+          "inStock": { "type": "boolean" }
+        }
+      },
+      "Review": {
+        "type": "object",
+        "properties": {
+          "id": { "type": "integer" },
+          "productId": { "type": "string" },
+          "author": { "type": "string" },
+          "rating": { "type": "integer" },
+          "comment": { "type": "string" }
+        }
+      }
+    }
+  }
+}
